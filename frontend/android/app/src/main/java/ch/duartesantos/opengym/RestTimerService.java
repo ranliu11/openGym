@@ -35,6 +35,7 @@ public class RestTimerService extends Service {
     private PowerManager.WakeLock cpu;
     private PowerManager power;
     private BroadcastReceiver screenOn;
+    private boolean isFirstTick = true;
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -228,6 +229,7 @@ public class RestTimerService extends Service {
     private void reachEnd() {
         running = false;
         holdCpuBriefly();
+        RestAlert.dismissVivoIsland(this);
         RestAlert.fireFromCountdown(getApplicationContext(), endsAt);
     }
 
@@ -276,6 +278,7 @@ public class RestTimerService extends Service {
         running = false;
         handler.removeCallbacks(tick);
         releaseCpu();
+        RestAlert.dismissVivoIsland(this);
         // Skipped before a hold that starts by itself: its count-in rings now, and the chain goes
         // on from here (RestAlert.chainNext). The page hears when (endsAt is the skip's time).
         boolean chained = RestAlert.hasCues();
@@ -295,8 +298,10 @@ public class RestTimerService extends Service {
     private void show() {
         try {
             long left = paused ? pausedLeft : Math.max(0, endsAt - System.currentTimeMillis());
+            int vivoOp = isFirstTick ? 0 : 1;
+            isFirstTick = false;
             Notification n = RestAlert.countdownNotification(
-                    this, left, totalMs, paused, pauseLabel, resumeLabel, minusLabel, plusLabel, skipLabel, accent, ink);
+                    this, left, totalMs, paused, pauseLabel, resumeLabel, minusLabel, plusLabel, skipLabel, accent, ink, vivoOp);
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(RestAlert.COUNTDOWN_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             } else {
@@ -317,5 +322,11 @@ public class RestTimerService extends Service {
     private void stopForegroundCompat() {
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
         else stopForeground(true);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        RestAlert.dismissVivoIsland(this);
     }
 }

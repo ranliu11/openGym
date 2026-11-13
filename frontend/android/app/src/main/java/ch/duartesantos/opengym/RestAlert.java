@@ -15,6 +15,7 @@ import android.media.AudioManager;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.view.View;
@@ -211,6 +212,7 @@ public final class RestAlert {
 
     public static void cancel(Context ctx, int id) {
         lastCues = "";
+        dismissVivoIsland(ctx);
         stopCountdown(ctx);
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         PendingIntent pi = PendingIntent.getBroadcast(ctx, id, alarmIntent(ctx), FLAGS);
@@ -507,6 +509,7 @@ public final class RestAlert {
     }
 
     static void stopCountdown(Context ctx) {
+        dismissVivoIsland(ctx);
         try {
             ctx.stopService(new Intent(ctx, RestTimerService.class));
         } catch (Exception ignored) { /* already gone */ }
@@ -521,6 +524,13 @@ public final class RestAlert {
     static Notification countdownNotification(Context ctx, long leftMs, long totalMs, boolean paused,
                                               String pause, String resume, String minus, String plus, String skip,
                                               int accent, int ink) {
+        return countdownNotification(ctx, leftMs, totalMs, paused, pause, resume, minus, plus, skip, accent, ink, 1);
+    }
+
+    @SuppressWarnings("deprecation")
+    static Notification countdownNotification(Context ctx, long leftMs, long totalMs, boolean paused,
+                                              String pause, String resume, String minus, String plus, String skip,
+                                              int accent, int ink, int vivoOp) {
         int max = (int) Math.max(1, Math.round(totalMs / 1000.0));
         int left = (int) Math.min(max, (Math.max(0, leftMs) + 999) / 1000);
         String clock = clock(left);
@@ -554,6 +564,13 @@ public final class RestAlert {
                 .setColor(accent)
                 .setContentIntent(openApp(ctx))
                 .setLocalOnly(true);
+        if (isVivo()) {
+            b.setContentTitle(paused ? (resume != null ? resume : "Paused") : "Rest");
+            b.setContentText(clock);
+            Bundle vivoExtras = new Bundle();
+            vivoExtras.putInt("notification.superx.operation", vivoOp);
+            b.addExtras(vivoExtras);
+        }
         if (Build.VERSION.SDK_INT >= 24) {
             b.setCustomContentView(compact);
             b.setCustomBigContentView(expanded);
@@ -781,5 +798,30 @@ public final class RestAlert {
         try { current.pause(); } catch (Exception ignored) { /* */ }
         try { current.release(); } catch (Exception ignored) { /* */ }
         current = null;
+    }
+
+    public static boolean isVivo() {
+        String m = Build.MANUFACTURER;
+        return m != null && (m.equalsIgnoreCase("vivo") || m.equalsIgnoreCase("iqoo"));
+    }
+
+    public static void dismissVivoIsland(Context ctx) {
+        if (!isVivo() || ctx == null) return;
+        try {
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new Notification.Builder(ctx, COUNTDOWN_CHANNEL_ID)
+                    : new Notification.Builder(ctx);
+            Bundle exts = new Bundle();
+            exts.putInt("notification.superx.operation", 2);
+            b.setSmallIcon(R.drawable.ic_stat_dumbbell)
+                    .setContentTitle("Rest over")
+                    .addExtras(exts);
+            nm.notify(COUNTDOWN_ID, b.build());
+            nm.cancel(COUNTDOWN_ID);
+        } catch (Exception ignored) {
+            /* Best-effort dismissal for OriginOS Atomic Island */
+        }
     }
 }
